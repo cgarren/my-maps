@@ -19,7 +19,34 @@ struct MapsListView: View {
                     }
                 } else {
                     ForEach(maps) { map in
-                        NavigationLink(map.name) { MapDetailView(map: map) }
+                        NavigationLink {
+                            MapDetailView(map: map)
+                        } label: {
+                            HStack(spacing: 12) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(map.name)
+                                        .font(.headline)
+                                    if map.totalCount > 0 {
+                                        Text("\(map.visitedCount) of \(map.totalCount) visited")
+                                            .foregroundStyle(.secondary)
+                                            .font(.subheadline)
+                                    } else {
+                                        Text("No places yet")
+                                            .foregroundStyle(.tertiary)
+                                            .font(.subheadline)
+                                    }
+                                }
+                                Spacer()
+                                VStack(alignment: .trailing, spacing: 6) {
+                                    Text("\(map.completionPercent)%")
+                                        .monospacedDigit()
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                    ProgressView(value: map.completionFraction)
+                                        .frame(width: 80)
+                                }
+                            }
+                        }
                     }
                     .onDelete { indexSet in
                         indexSet.map { maps[$0] }.forEach(modelContext.delete)

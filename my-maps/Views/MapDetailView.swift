@@ -98,9 +98,6 @@ struct MapDetailView: View {
             NavigationStack {
                 PlaceDetailView(place: place)
                     .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Done") { selectedPlace = nil }
-                        }
                         ToolbarItem(placement: .destructiveAction) {
                             Button(role: .destructive) {
                                 if let idx = map.places.firstIndex(where: { $0.id == place.id }) {
@@ -112,9 +109,15 @@ struct MapDetailView: View {
                                 Label("Delete", systemImage: "trash")
                             }
                         }
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { selectedPlace = nil }
+                        }
                     }
             }
             .presentationDetents([.medium, .large])
+#if os(iOS)
+            .presentationBackground(.ultraThinMaterial)
+#endif
         }
         .sheet(isPresented: $showingNameSheet) {
             NamePlaceSheet(name: $pendingName, onCreate: {
@@ -184,6 +187,35 @@ struct MapDetailView: View {
                     }
                 }
                 .padding()
+            } else {
+                // Completion HUD (bottom, compact so it doesn't cover the Maps logo)
+                GlassPanel {
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Completion")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text("\(map.visitedCount) of \(map.totalCount) visited")
+                                .font(.subheadline)
+                        }
+                        // No spacer—keeps the panel compact
+                        let fraction = max(0, min(1, map.completionFraction))
+                        ZStack {
+                            Circle()
+                                .stroke(Color.secondary.opacity(0.25), lineWidth: 6)
+                            Circle()
+                                .trim(from: 0, to: fraction)
+                                .stroke(.tint, style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round))
+                                .rotationEffect(.degrees(-90))
+                            Text("\(map.completionPercent)%")
+                                .font(.caption2)
+                                .monospacedDigit()
+                        }
+                        .frame(width: 36, height: 36)
+                    }
+                    .fixedSize()
+                }
+                .padding(.bottom, 8)
             }
         }
     }
