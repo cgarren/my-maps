@@ -31,6 +31,12 @@ struct TemplateLoader {
         }
     }
     
+    /// Converts an array of `TemplatePlace` to `ExtractedAddress` format
+    /// Exposed for use by AI-generated template flows
+    static func convertToExtractedAddresses(_ places: [TemplatePlace]) -> [ExtractedAddress] {
+        places.map { convertToExtractedAddress($0) }
+    }
+    
     /// Converts a TemplatePlace to ExtractedAddress format
     private static func convertToExtractedAddress(_ place: TemplatePlace) -> ExtractedAddress {
         var addressLines: [String] = []

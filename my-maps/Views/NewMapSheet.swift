@@ -14,6 +14,8 @@ struct NewMapSheet: View {
     @State private var selectedTemplate: MapTemplate? = nil
     @State private var availableTemplates: [MapTemplate] = []
     @StateObject private var importer = URLImporter()
+    @State private var aiQuery: String = ""
+    @State private var isGenerating: Bool = false
 
     var body: some View {
         NavigationStack {
@@ -65,6 +67,41 @@ struct NewMapSheet: View {
                         Text("Disabled when using a template.")
                     } else {
                         Text("Uses AI for address extraction.")
+                    }
+                }
+                
+                // AI generation section
+                Section {
+                    VStack(alignment: .leading, spacing: 8) {
+                        TextField("e.g. Top coffee shops in Austin", text: $aiQuery)
+                            #if os(iOS)
+                            .textInputAutocapitalization(.sentences)
+                            .disableAutocorrection(false)
+                            #endif
+                            .disabled(!LLMPlaceGenerator.isSupported || templateSelected)
+                        HStack {
+                            Spacer()
+                            Button {
+                                Task { await generateWithAI() }
+                            } label: {
+                                if isGenerating {
+                                    ProgressView()
+                                } else {
+                                    Text("Generate with AI")
+                                }
+                            }
+                            .disabled(!LLMPlaceGenerator.isSupported || templateSelected || aiQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isGenerating)
+                        }
+                    }
+                } header: {
+                    Text("Generate with AI")
+                } footer: {
+                    if !LLMPlaceGenerator.isSupported {
+                        Text("Requires iOS 18+ or macOS 15+ with Apple Intelligence.")
+                    } else if templateSelected {
+                        Text("Disabled when using a template.")
+                    } else {
+                        Text("Uses Foundation Models to generate a structured list of places in the Deloitte template format. Review results before adding to your map.")
                     }
                 }
             }
@@ -159,6 +196,24 @@ struct NewMapSheet: View {
         } else {
             // Priority 3: Empty map
             dismiss()
+        }
+    }
+
+    @MainActor private func generateWithAI() async {
+        guard !isGenerating else { return }
+        isGenerating = true
+        defer { isGenerating = false }
+        do {
+            let result = try await LLMPlaceGenerator.generatePlaces(for: aiQuery, targetCount: 20)
+            // Start importer from generated template places
+            isImporting = true
+            importer.startFromGeneratedTemplate(result.places, usedPCC: result.usedPCC)
+        } catch {
+            // If generation fails, show a lightweight alert via importer failed state
+            isImporting = true
+            await MainActor.run {
+                importer.cancel()
+            }
         }
     }
 }

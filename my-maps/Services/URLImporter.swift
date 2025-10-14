@@ -63,6 +63,16 @@ final class URLImporter: ObservableObject {
         }
     }
 
+    /// Starts the import pipeline from AI-generated `TemplatePlace` objects
+    func startFromGeneratedTemplate(_ places: [TemplatePlace], usedPCC: Bool) {
+        let addresses = TemplateLoader.convertToExtractedAddresses(places)
+        currentTask?.cancel()
+        currentTask = Task { [weak self] in
+            await self?.setUsedPCC(usedPCC)
+            await self?.runFromTemplate(addresses: addresses)
+        }
+    }
+
     // MARK: - Pipeline
     private func runFromTemplate(addresses: [ExtractedAddress]) async {
         await setCandidates(addresses)
