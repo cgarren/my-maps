@@ -19,6 +19,7 @@ struct MapDetailView: View {
     @State private var pendingCoordinate: CLLocationCoordinate2D?
     @State private var pendingName: String = ""
     @State private var latestCenter: CLLocationCoordinate2D?
+    @State private var showingPlacesList = false
     // Removed mapRevision invalidation; we'll key each item by id+visited instead
     private let geocoder = CLGeocoder()
     private let locationProvider = LocationProvider()
@@ -142,6 +143,15 @@ struct MapDetailView: View {
                 prepareNameAndConfirm(for: coord, preferredName: preferred)
             }
         }
+        .sheet(isPresented: $showingPlacesList) {
+            NavigationStack {
+                PlacesListView(map: map)
+            }
+            .presentationDetents([.medium, .large])
+#if os(iOS)
+            .presentationBackground(.ultraThinMaterial)
+#endif
+        }
         .sheet(item: $pickContext) { ctx in
             PickNearbyPlacesSheet(
                 coordinate: ctx.coordinate,
@@ -188,33 +198,39 @@ struct MapDetailView: View {
                 }
                 .padding()
             } else {
-                // Completion HUD (bottom, compact so it doesn't cover the Maps logo)
-                GlassPanel {
-                    HStack(spacing: 12) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Completion")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Text("\(map.visitedCount) of \(map.totalCount) visited")
-                                .font(.subheadline)
+                // Completion HUD (tap to open Places list)
+                Button {
+                    showingPlacesList = true
+                } label: {
+                    GlassPanel {
+                        HStack(spacing: 12) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Completion")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Text("\(map.visitedCount) of \(map.totalCount) visited")
+                                    .font(.subheadline)
+                            }
+                            // No spacer—keeps the panel compact
+                            let fraction = max(0, min(1, map.completionFraction))
+                            ZStack {
+                                Circle()
+                                    .stroke(Color.secondary.opacity(0.25), lineWidth: 6)
+                                Circle()
+                                    .trim(from: 0, to: fraction)
+                                    .stroke(.tint, style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round))
+                                    .rotationEffect(.degrees(-90))
+                                Text("\(map.completionPercent)%")
+                                    .font(.caption2)
+                                    .monospacedDigit()
+                            }
+                            .frame(width: 36, height: 36)
                         }
-                        // No spacer—keeps the panel compact
-                        let fraction = max(0, min(1, map.completionFraction))
-                        ZStack {
-                            Circle()
-                                .stroke(Color.secondary.opacity(0.25), lineWidth: 6)
-                            Circle()
-                                .trim(from: 0, to: fraction)
-                                .stroke(.tint, style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round))
-                                .rotationEffect(.degrees(-90))
-                            Text("\(map.completionPercent)%")
-                                .font(.caption2)
-                                .monospacedDigit()
-                        }
-                        .frame(width: 36, height: 36)
+                        .fixedSize()
                     }
-                    .fixedSize()
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Show places list")
                 .padding(.bottom, 8)
             }
         }
