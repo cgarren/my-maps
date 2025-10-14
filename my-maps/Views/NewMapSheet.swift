@@ -11,6 +11,8 @@ struct NewMapSheet: View {
     @State private var isImporting: Bool = false
     @State private var showReview: Bool = false
     @State private var createdMap: MapCollection? = nil
+    @State private var selectedTemplate: MapTemplate? = nil
+    @State private var availableTemplates: [MapTemplate] = []
     @StateObject private var importer = URLImporter()
 
     var body: some View {
@@ -21,23 +23,48 @@ struct NewMapSheet: View {
                     .textInputAutocapitalization(.words)
                 #endif
                     .focused($isNameFocused)
-                .padding()
+                // .padding()
                 .onSubmit { create() }
 
-                // Optional URL field (Apple Intelligence only)
+                // Template selection
                 Section {
-                    let fmSupported = AIAddressExtractor.isSupported
-                    TextField("Import from URL (optional)", text: $urlString)
+                    Picker("Template", selection: $selectedTemplate) {
+                        Text("None").tag(nil as MapTemplate?)
+                        ForEach(availableTemplates) { template in
+                            Text(template.displayName).tag(template as MapTemplate?)
+                        }
+                    }
+                    #if os(macOS)
+                    .pickerStyle(.menu)
+                    #endif
+                } header: {
+                    Text("Prefill from Template")
+                } footer: {
+                    Text("Choose a template to prefill your map with predefined places.")
+                }
+                
+                let aiSupported = AIAddressExtractor.isSupported
+                let templateSelected = selectedTemplate != nil
+
+                // Optional URL field (AI-powered extraction)
+                Section {
+                    TextField("https://", text: $urlString)
                         #if os(iOS)
                         .keyboardType(.URL)
                         .textInputAutocapitalization(.never)
                         .disableAutocorrection(true)
                         #endif
-                        .disabled(!fmSupported)
-                    if !fmSupported {
-                        Text("URL import requires Apple Intelligence on this device.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
+                        .disabled(!aiSupported || templateSelected)
+                } header: {
+                    Text("Import from URL")
+                }
+                footer: {
+                    if !aiSupported {
+                        Text("URL import requires iOS 13+ or macOS 10.15+.")
+                    } else if templateSelected {
+                        Text("Disabled when using a template.")
+                    } else {
+                        Text("Uses AI for address extraction.")
                     }
                 }
             }
@@ -57,6 +84,9 @@ struct NewMapSheet: View {
         }
         .frame(minWidth: 320, minHeight: 150)
         .task { isNameFocused = true }
+        .onAppear {
+            availableTemplates = TemplateLoader.availableTemplates()
+        }
         .sheet(isPresented: $isImporting) {
             ImportProgressView(importer: importer, onCancel: {
                 importer.cancel()
@@ -107,11 +137,27 @@ struct NewMapSheet: View {
         modelContext.insert(map)
         createdMap = map
 
+        // Priority 1: Template selection
+        if let template = selectedTemplate {
+            do {
+                let places = try TemplateLoader.loadPlaces(from: template)
+                isImporting = true
+                importer.startFromTemplate(places)
+            } catch {
+                // If template loading fails, just create an empty map
+                print("Failed to load template: \(error)")
+                dismiss()
+            }
+            return
+        }
+        
+        // Priority 2: URL import
         let urlTrimmed = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
         if !urlTrimmed.isEmpty, AIAddressExtractor.isSupported, URL(string: urlTrimmed) != nil {
             isImporting = true
             importer.start(urlString: urlTrimmed, allowPCC: true)
         } else {
+            // Priority 3: Empty map
             dismiss()
         }
     }

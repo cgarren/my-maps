@@ -39,16 +39,18 @@ struct ImportProgressView: View {
                     }
                 }
 
-                if importer.usedPCC {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Private Cloud Compute may be used for extraction.")
+                VStack(alignment: .leading, spacing: 6) {
+                    if importer.usedLLM {
+                        Text("Using Apple Intelligence LLM for extraction")
                             .font(.footnote)
-                        Text("Your data is processed securely to fulfill your request. Review results before adding.")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("Using on-device Natural Language AI for extraction")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 // Paste fallback moved to the review step
             }
             .padding()

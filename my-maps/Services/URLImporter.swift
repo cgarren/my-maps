@@ -18,6 +18,7 @@ final class URLImporter: ObservableObject {
     @Published private(set) var stage: ImportStage = .idle
     @Published private(set) var candidates: [ExtractedAddress] = []
     @Published private(set) var usedPCC: Bool = false
+    @Published private(set) var usedLLM: Bool = false
     @Published private(set) var debugLogs: [UUID: [String]] = [:]
 
     private var tasks = Set<AnyCancellable>()
@@ -32,6 +33,7 @@ final class URLImporter: ObservableObject {
             self?.stage = .idle
             self?.candidates = []
             self?.usedPCC = false
+            self?.usedLLM = false
             self?.debugLogs = [:]
         }
     }
@@ -54,7 +56,24 @@ final class URLImporter: ObservableObject {
         }
     }
 
+    func startFromTemplate(_ addresses: [ExtractedAddress]) {
+        currentTask?.cancel()
+        currentTask = Task { [weak self] in
+            await self?.runFromTemplate(addresses: addresses)
+        }
+    }
+
     // MARK: - Pipeline
+    private func runFromTemplate(addresses: [ExtractedAddress]) async {
+        await setCandidates(addresses)
+        await setUsedPCC(false)
+        await setUsedLLM(false)
+        
+        guard !Task.isCancelled else { return }
+        await geocode()
+        await setStage(.reviewing)
+    }
+    
     private func run(url: URL?, pastedText: String?, allowPCC: Bool) async {
         await setStage(.fetching)
         do {
@@ -78,6 +97,7 @@ final class URLImporter: ObservableObject {
         await setStage(.extracting(usePCC: false))
         let extraction = await AIAddressExtractor.extractAddresses(fromHTML: content, allowPCC: allowPCC)
         await setUsedPCC(extraction.usedPCC)
+        await setUsedLLM(extraction.usedLLM)
         let unique = dedupe(extraction.addresses)
         await setCandidates(unique)
 
@@ -127,7 +147,7 @@ final class URLImporter: ObservableObject {
             done += 1
             await setStage(.geocoding(done: done, total: total))
             // Rate limiting: delay between addresses to avoid overwhelming the geocoding service
-            if idx < candidates.indices.last {
+            if idx < candidates.count - 1 {
                 try? await Task.sleep(nanoseconds: 500_000_000) // 500ms between addresses
             }
         }
@@ -330,6 +350,7 @@ final class URLImporter: ObservableObject {
     @MainActor private func setStage(_ stage: ImportStage) { self.stage = stage }
     @MainActor private func setCandidates(_ c: [ExtractedAddress]) { self.candidates = c }
     @MainActor private func setUsedPCC(_ used: Bool) { self.usedPCC = used }
+    @MainActor private func setUsedLLM(_ used: Bool) { self.usedLLM = used }
     @MainActor private func setItemStatus(index: Int, status: GeocodeStatus) {
         guard candidates.indices.contains(index) else { return }
         var copy = candidates

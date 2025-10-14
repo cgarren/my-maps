@@ -5,6 +5,9 @@ struct MapsListView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \MapCollection.name) private var maps: [MapCollection]
     @State private var isPresentingNewMap = false
+    @State private var renamingMap: MapCollection? = nil
+    @State private var renameText: String = ""
+    @State private var mapToDelete: MapCollection? = nil
 
     var body: some View {
         NavigationStack {
@@ -47,9 +50,22 @@ struct MapsListView: View {
                                 }
                             }
                         }
-                    }
-                    .onDelete { indexSet in
-                        indexSet.map { maps[$0] }.forEach(modelContext.delete)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) {
+                                mapToDelete = map
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
+                        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                            Button {
+                                renameText = map.name
+                                renamingMap = map
+                            } label: {
+                                Label("Rename", systemImage: "pencil")
+                            }
+                            .tint(.blue)
+                        }
                     }
                 }
             }
@@ -62,6 +78,50 @@ struct MapsListView: View {
         }
         .sheet(isPresented: $isPresentingNewMap) {
             NewMapSheet()
+        }
+        .alert("Rename Map", isPresented: Binding(
+            get: { renamingMap != nil },
+            set: { if !$0 { renamingMap = nil } }
+        )) {
+            TextField("Map Name", text: $renameText)
+                #if os(iOS)
+                .textInputAutocapitalization(.words)
+                #endif
+            Button("Cancel", role: .cancel) {
+                renamingMap = nil
+                renameText = ""
+            }
+            Button("Rename") {
+                if let map = renamingMap {
+                    let trimmed = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmed.isEmpty {
+                        map.name = trimmed
+                    }
+                }
+                renamingMap = nil
+                renameText = ""
+            }
+            .disabled(renameText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        } message: {
+            Text("Enter a new name for this map")
+        }
+        .alert("Delete Map", isPresented: Binding(
+            get: { mapToDelete != nil },
+            set: { if !$0 { mapToDelete = nil } }
+        )) {
+            Button("Cancel", role: .cancel) {
+                mapToDelete = nil
+            }
+            Button("Delete", role: .destructive) {
+                if let map = mapToDelete {
+                    modelContext.delete(map)
+                }
+                mapToDelete = nil
+            }
+        } message: {
+            if let map = mapToDelete {
+                Text("Are you sure you want to delete \"\(map.name)\"? This action cannot be undone.")
+            }
         }
     }
 }

@@ -1,14 +1,17 @@
 import Foundation
+import NaturalLanguage
 
 struct AIAddressExtractor {
     static var isSupported: Bool {
-        if #available(iOS 18, macOS 15, *) { return true }
+        // Natural Language framework is available on iOS 13+
+        if #available(iOS 13, macOS 10.15, *) { return true }
         return false
     }
 
     struct Result {
         let addresses: [ExtractedAddress]
         let usedPCC: Bool
+        let usedLLM: Bool
     }
 
     // Preferred entry: pass raw HTML so we can parse JSON-LD if available
@@ -16,7 +19,7 @@ struct AIAddressExtractor {
         // 1) Try JSON-LD (schema.org PostalAddress)
         let jsonLDAddresses = extractFromJSONLD(html: html)
         if !jsonLDAddresses.isEmpty {
-            return Result(addresses: jsonLDAddresses, usedPCC: false)
+            return Result(addresses: jsonLDAddresses, usedPCC: false, usedLLM: false)
         }
 
         // 2) Fallback to plain text extraction
@@ -26,10 +29,29 @@ struct AIAddressExtractor {
 
     // Back-compat entry for plain text
     static func extractAddresses(from text: String, allowPCC: Bool) async -> Result {
-        // 0) Heuristic structured parsing for Deloitte-style lists
-        var found: [ExtractedAddress] = parseStructuredBlocks(from: text)
+        var found: [ExtractedAddress] = []
+        var usedLLM = false
+        
+        // 0) Try Foundation Models LLM extraction (iOS 18+)
+        if LLMAddressExtractor.isSupported {
+            print(">>> Trying Foundation Models for address extraction")
+            if let llmResults = try? await LLMAddressExtractor.extractAddresses(from: text) {
+                found.append(contentsOf: llmResults)
+                usedLLM = true
+            }
+        }
+        
+        // 1) Try Natural Language framework for AI-powered entity extraction (iOS 13+)
+        // Only use if LLM didn't work or found nothing
+        if !usedLLM || found.isEmpty {
+            print(">>> Using Natural Language for address extraction")
+            found.append(contentsOf: extractUsingNaturalLanguage(from: text))
+        }
+        
+        // 2) Heuristic structured parsing for Deloitte-style lists
+        found.append(contentsOf: parseStructuredBlocks(from: text))
 
-        // 1) Fallback to NSDataDetector for any additional matches
+        // 3) Fallback to NSDataDetector for any additional matches
         let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.address.rawValue)
         detector?.enumerateMatches(in: text, options: [], range: NSRange(text.startIndex..., in: text)) { result, _, _ in
             guard let result, let components = result.addressComponents else { return }
@@ -40,11 +62,108 @@ struct AIAddressExtractor {
 
         // Filter out items that don't look like mailable addresses
         found = found.filter { isAddressLike($0.normalizedText) }
+        
+        // De-duplicate addresses
+        var seen = Set<String>()
+        var unique: [ExtractedAddress] = []
+        for a in found {
+            let key = a.normalizedText.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+            if seen.insert(key).inserted { unique.append(a) }
+        }
+        
         // Heuristic: if nothing found and PCC allowed, signal PCC usage for disclosure
-        let usedPCC = found.isEmpty && allowPCC
-        return Result(addresses: found, usedPCC: usedPCC)
+        let usedPCC = unique.isEmpty && allowPCC
+        print(">>> Extracted \(unique.count) addresses")
+        print(">>> Results: \(unique)")
+        return Result(addresses: unique, usedPCC: usedPCC, usedLLM: usedLLM)
     }
 
+    // MARK: - Natural Language AI Extraction
+    private static func extractUsingNaturalLanguage(from text: String) -> [ExtractedAddress] {
+        var results: [ExtractedAddress] = []
+        
+        // Use NLTagger to identify location entities and place names
+        let tagger = NLTagger(tagSchemes: [.nameType])
+        tagger.string = text
+        
+        // Options for better accuracy
+        let options: NLTagger.Options = [.omitPunctuation, .omitWhitespace, .joinNames]
+        let tags: [NLTag] = [.placeName, .organizationName] // Organizations often have addresses
+        
+        // Find all location/place entities
+        tagger.enumerateTags(in: text.startIndex..<text.endIndex, unit: .word, scheme: .nameType, options: options) { tag, range in
+            guard let tag = tag, tags.contains(tag) else { return true }
+            
+            let entity = String(text[range])
+            
+            // Try to extract address context around this entity
+            if let address = extractAddressContext(from: text, around: range, entityName: entity) {
+                results.append(address)
+            }
+            
+            return true
+        }
+        
+        return results
+    }
+    
+    // Extract full address from context around a detected entity
+    private static func extractAddressContext(from text: String, around range: Range<String.Index>, entityName: String) -> ExtractedAddress? {
+        // Expand the range to capture surrounding lines (up to 5 lines before and after)
+        let lines = text.components(separatedBy: .newlines)
+        guard let nsRange = Range(NSRange(range, in: text), in: text) else { return nil }
+        
+        // Find which line contains our entity
+        var currentPos = text.startIndex
+        var lineIndex = 0
+        for (idx, line) in lines.enumerated() {
+            let lineEnd = text.index(currentPos, offsetBy: line.count, limitedBy: text.endIndex) ?? text.endIndex
+            if nsRange.lowerBound >= currentPos && nsRange.lowerBound < lineEnd {
+                lineIndex = idx
+                break
+            }
+            // Account for newline character
+            currentPos = text.index(lineEnd, offsetBy: 1, limitedBy: text.endIndex) ?? text.endIndex
+        }
+        
+        // Extract 5 lines before and after the entity
+        let startLine = max(0, lineIndex - 5)
+        let endLine = min(lines.count - 1, lineIndex + 5)
+        let contextLines = Array(lines[startLine...endLine])
+        let context = contextLines.joined(separator: "\n")
+        
+        // Try to find address-like patterns in this context
+        let addressPattern = """
+        (?x)                                        # Enable verbose mode
+        (?:                                          # Start non-capturing group
+            \\d+\\s+[A-Za-z0-9\\s,.'#-]+?           # Street address (123 Main St)
+            (?:Suite|Ste\\.?|Floor|Fl\\.?|#)?\\s*\\d*[A-Za-z]?  # Optional suite/floor
+            \\s*[,\\n]\\s*                           # Separator
+            [A-Za-z\\s.'()-]+,\\s*                   # City
+            [A-Z]{2}\\s*                             # State (2 letters)
+            ,?\\s*\\d{5}(?:-\\d{4})?                # ZIP code
+        )
+        """
+        
+        guard let regex = try? NSRegularExpression(pattern: addressPattern, options: []) else { return nil }
+        let nsContext = context as NSString
+        
+        if let match = regex.firstMatch(in: context, options: [], range: NSRange(location: 0, length: nsContext.length)) {
+            let addressText = nsContext.substring(with: match.range)
+            let normalized = addressText
+                .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            return ExtractedAddress(
+                rawText: addressText,
+                normalizedText: normalized,
+                displayName: entityName.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+        }
+        
+        return nil
+    }
+    
     private static func normalize(components: [NSTextCheckingKey: String]) -> String {
         let street = components[.street] ?? ""
         let city = components[.city] ?? ""

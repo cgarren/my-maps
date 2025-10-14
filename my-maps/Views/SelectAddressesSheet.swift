@@ -93,17 +93,23 @@ struct SelectAddressesSheet: View {
                 }
 
                 VStack(spacing: 8) {
-                    if usedPCC {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Some extraction may use Private Cloud Compute.")
+                    // Info about AI extraction
+                    VStack(alignment: .leading, spacing: 6) {
+                        if importer.usedLLM {
+                            Text("Addresses extracted using Apple Intelligence LLM")
                                 .font(.footnote)
-                            Text("Review results before adding to your map.")
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Text("Addresses extracted using on-device Natural Language AI")
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                         }
-                        .padding(.horizontal)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        Text("Review results before adding to your map.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
                     }
+                    .padding(.horizontal)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     
                     // Show rate limiting notice if there are failed addresses
                     let failedCount = importer.candidates.filter { $0.coordinate == nil }.count
