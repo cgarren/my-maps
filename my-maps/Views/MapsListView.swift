@@ -9,11 +9,21 @@ struct MapsListView: View {
     var body: some View {
         NavigationStack {
             List {
-                ForEach(maps) { map in
-                    NavigationLink(map.name) { MapDetailView(map: map) }
-                }
-                .onDelete { indexSet in
-                    indexSet.map { maps[$0] }.forEach(modelContext.delete)
+                if maps.isEmpty {
+                    Section {
+                    Text("No maps found")
+                            .foregroundStyle(.secondary)
+                    }
+                    Section {
+                        Button("Create a map") { isPresentingNewMap = true }
+                    }
+                } else {
+                    ForEach(maps) { map in
+                        NavigationLink(map.name) { MapDetailView(map: map) }
+                    }
+                    .onDelete { indexSet in
+                        indexSet.map { maps[$0] }.forEach(modelContext.delete)
+                    }
                 }
             }
             .navigationTitle("My Maps")

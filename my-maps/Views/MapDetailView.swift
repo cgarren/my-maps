@@ -19,19 +19,37 @@ struct MapDetailView: View {
     @State private var pendingCoordinate: CLLocationCoordinate2D?
     @State private var pendingName: String = ""
     @State private var latestCenter: CLLocationCoordinate2D?
+    // Removed mapRevision invalidation; we'll key each item by id+visited instead
     private let geocoder = CLGeocoder()
     private let locationProvider = LocationProvider()
 
     struct PickContext: Identifiable { let id = UUID(); let coordinate: CLLocationCoordinate2D }
 
+    // (removed helper views; use a minimal Annotation content instead)
+
     var body: some View {
         MapReader { proxy in
             Map(position: $cameraPosition) {
-                ForEach(map.places) { place in
+                let keyed: [(key: String, place: Place)] = map.places.map { p in ("\(p.id.uuidString)-\(p.visited ? "v" : "u")", p) }
+                ForEach(keyed, id: \.key) { item in
+                    let place = item.place
                     let coord = CLLocationCoordinate2D(latitude: place.latitude, longitude: place.longitude)
-                    Annotation(place.name, coordinate: coord) {
+                    let name = place.name
+                    let visited = place.visited
+                    let color: Color = visited ? .green : .red
+                    let toggleTitle: String = visited ? "Mark as Unvisited" : "Mark as Visited"
+                    let toggleIcon: String = visited ? "xmark.circle" : "checkmark.circle"
+
+                    Annotation(name, coordinate: coord) {
                         Button { selectedPlace = place } label: {
-                            Image(systemName: "mappin.circle.fill").font(.title).foregroundStyle(.red)
+                            Image(systemName: "mappin.circle.fill")
+                                .font(.title)
+                                .foregroundStyle(color)
+                        }
+                        .contextMenu {
+                            Button(toggleTitle, systemImage: toggleIcon) {
+                                place.visited.toggle()
+                            }
                         }
                     }
                 }
@@ -80,8 +98,8 @@ struct MapDetailView: View {
             NavigationStack {
                 PlaceDetailView(place: place)
                     .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Button("Cancel") { selectedPlace = nil }
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { selectedPlace = nil }
                         }
                         ToolbarItem(placement: .destructiveAction) {
                             Button(role: .destructive) {

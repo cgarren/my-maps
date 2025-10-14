@@ -7,6 +7,7 @@ struct PlaceDetailView: View {
     var body: some View {
         Form {
             TextField("Name", text: $place.name)
+            Toggle("Visited", isOn: $place.visited)
             LabeledContent("Latitude") { Text(String(format: "%.5f", place.latitude)) }
             LabeledContent("Longitude") { Text(String(format: "%.5f", place.longitude)) }
         }
