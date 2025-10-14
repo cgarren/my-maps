@@ -15,6 +15,7 @@ struct NamePlaceSheet: View {
                 #endif
                     .focused($isNameFocused)
                 .padding()
+                .onSubmit { onCreate() }
             }
             .navigationTitle("New Place")
             .toolbar {
