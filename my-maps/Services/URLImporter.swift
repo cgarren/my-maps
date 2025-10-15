@@ -59,25 +59,26 @@ final class URLImporter: ObservableObject {
     func startFromTemplate(_ addresses: [ExtractedAddress]) {
         currentTask?.cancel()
         currentTask = Task { [weak self] in
+            await self?.setUsedPCC(false)
+            await self?.setUsedLLM(false)
             await self?.runFromTemplate(addresses: addresses)
         }
     }
 
-    /// Starts the import pipeline from AI-generated `TemplatePlace` objects
-    func startFromGeneratedTemplate(_ places: [TemplatePlace], usedPCC: Bool) {
-        let addresses = TemplateLoader.convertToExtractedAddresses(places)
+    /// Start the pipeline directly from AI-generated `TemplatePlace` items
+    func startFromGenerated(_ places: [TemplatePlace], usedPCC: Bool) {
+        let extracted = TemplateLoader.convertToExtractedAddresses(places)
         currentTask?.cancel()
         currentTask = Task { [weak self] in
             await self?.setUsedPCC(usedPCC)
-            await self?.runFromTemplate(addresses: addresses)
+            await self?.setUsedLLM(true)
+            await self?.runFromTemplate(addresses: extracted)
         }
     }
 
     // MARK: - Pipeline
     private func runFromTemplate(addresses: [ExtractedAddress]) async {
         await setCandidates(addresses)
-        await setUsedPCC(false)
-        await setUsedLLM(false)
         
         guard !Task.isCancelled else { return }
         await geocode()

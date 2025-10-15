@@ -8,6 +8,7 @@ struct MapsListView: View {
     @State private var renamingMap: MapCollection? = nil
     @State private var renameText: String = ""
     @State private var mapToDelete: MapCollection? = nil
+    @State private var showSettings = false
 
     var body: some View {
         NavigationStack {
@@ -71,6 +72,13 @@ struct MapsListView: View {
             }
             .navigationTitle("My Maps")
             .toolbar {
+                ToolbarItem(placement: .automatic) {
+                    Button {
+                        showSettings = true
+                    } label: {
+                        Label("AI Settings", systemImage: "gearshape")
+                    }
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Button { isPresentingNewMap = true } label: { Label("New Map", systemImage: "plus") }
                 }
@@ -122,6 +130,9 @@ struct MapsListView: View {
             if let map = mapToDelete {
                 Text("Are you sure you want to delete \"\(map.name)\"? This action cannot be undone.")
             }
+        }
+        .sheet(isPresented: $showSettings) {
+            SettingsView()
         }
     }
 }
