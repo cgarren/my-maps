@@ -87,14 +87,14 @@ struct NewMapSheet: View {
                                 if isGenerating {
                                     ProgressView()
                                 } else {
-                                    Text("Generate with AI")
+                                    Text("generate with ai")
                                 }
                             }
                             .disabled(!LLMPlaceGenerator.isSupported || templateSelected || aiQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isGenerating)
                         }
                     }
                 } header: {
-                    Text("Generate with AI")
+                    Text("generate with ai")
                 } footer: {
                     if !LLMPlaceGenerator.isSupported {
                         Text("Requires iOS 18+ or macOS 15+ with Apple Intelligence.")
@@ -204,16 +204,22 @@ struct NewMapSheet: View {
         isGenerating = true
         defer { isGenerating = false }
         do {
-            let result = try await LLMPlaceGenerator.generatePlaces(for: aiQuery, targetCount: 20)
-            // Start importer from generated template places
+            let trimmed = aiQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return }
+            // Ensure a map exists so the review step can add places
+            if createdMap == nil {
+                let mapName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+                let map = MapCollection(name: mapName.isEmpty ? "Untitled Map" : mapName)
+                modelContext.insert(map)
+                createdMap = map
+            }
+            let (places, usedPCC) = try await LLMPlaceGenerator.generatePlaces(userPrompt: trimmed, maxCount: 20)
+            // Start importer from generated places (converted to ExtractedAddress inside)
             isImporting = true
-            importer.startFromGeneratedTemplate(result.places, usedPCC: result.usedPCC)
+            importer.startFromGenerated(places, usedPCC: usedPCC)
         } catch {
             // If generation fails, show a lightweight alert via importer failed state
-            isImporting = true
-            await MainActor.run {
-                importer.cancel()
-            }
+            print("AI generation failed: \(error.localizedDescription)")
         }
     }
 }
