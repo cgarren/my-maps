@@ -76,6 +76,8 @@ final class URLImporter: ObservableObject {
         }
     }
 
+    // (Deprecated) startFromGeneratedTemplate was replaced by startFromGenerated which sets usedLLM
+
     // MARK: - Pipeline
     private func runFromTemplate(addresses: [ExtractedAddress]) async {
         await setCandidates(addresses)

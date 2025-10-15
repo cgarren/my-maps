@@ -93,7 +93,7 @@ struct NewMapSheet: View {
                                 if isGenerating {
                                     ProgressView()
                                 } else {
-                                    Text("Generate with AI")
+                                    Text("generate with ai")
                                 }
                             }
                             .disabled(!selectedProvider.isAvailable || templateSelected || aiQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isGenerating)
