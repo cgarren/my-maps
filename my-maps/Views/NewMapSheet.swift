@@ -14,6 +14,14 @@ struct NewMapSheet: View {
     @State private var selectedTemplate: MapTemplate? = nil
     @State private var availableTemplates: [MapTemplate] = []
     @StateObject private var importer = URLImporter()
+    @State private var aiQuery: String = ""
+    @State private var isGenerating: Bool = false
+    @State private var showSettings: Bool = false
+    @AppStorage("selected_ai_provider") private var selectedProviderRaw: String = AIProvider.appleFM.rawValue
+    
+    private var selectedProvider: AIProvider {
+        AIProvider(rawValue: selectedProviderRaw) ?? .appleFM
+    }
 
     var body: some View {
         NavigationStack {
@@ -67,14 +75,57 @@ struct NewMapSheet: View {
                         Text("Uses AI for address extraction.")
                     }
                 }
+                
+                // AI generation section
+                Section {
+                    VStack(alignment: .leading, spacing: 8) {
+                        TextField("e.g. Top coffee shops in Austin", text: $aiQuery)
+                            #if os(iOS)
+                            .textInputAutocapitalization(.sentences)
+                            .disableAutocorrection(false)
+                            #endif
+                            .disabled(!selectedProvider.isAvailable || templateSelected)
+                        HStack {
+                            Spacer()
+                            Button {
+                                Task { await generateWithAI() }
+                            } label: {
+                                if isGenerating {
+                                    ProgressView()
+                                } else {
+                                    Text("generate with ai")
+                                }
+                            }
+                            .disabled(!selectedProvider.isAvailable || templateSelected || aiQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isGenerating)
+                        }
+                    }
+                } header: {
+                    Text("Generate with AI (\(selectedProvider.displayName))")
+                } footer: {
+                    if !selectedProvider.isAvailable {
+                        if selectedProvider == .appleFM {
+                            Text("Requires iOS 18+ or macOS 15+ with Apple Intelligence.")
+                        } else {
+                            Text("Requires API key configuration. Tap the settings icon above.")
+                        }
+                    } else if templateSelected {
+                        Text("Disabled when using a template.")
+                    } else {
+                        Text("Uses \(selectedProvider.displayName) to generate places! Review results before adding to your map.")
+                    }
+                }
             }
             .navigationTitle("New Map")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
-                ToolbarItem(placement: .cancellationAction) {
-                    EmptyView()
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        showSettings = true
+                    } label: {
+                        Label("AI Settings", systemImage: "gearshape")
+                    }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Create") { create() }
@@ -129,6 +180,9 @@ struct NewMapSheet: View {
                 break
             }
         }
+        .sheet(isPresented: $showSettings) {
+            SettingsView()
+        }
     }
 
     private func create() {
@@ -159,6 +213,40 @@ struct NewMapSheet: View {
         } else {
             // Priority 3: Empty map
             dismiss()
+        }
+    }
+
+    @MainActor private func generateWithAI() async {
+        guard !isGenerating else { return }
+        isGenerating = true
+        defer { isGenerating = false }
+        do {
+            let trimmed = aiQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return }
+            // Ensure a map exists so the review step can add places
+            if createdMap == nil {
+                let mapName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+                let map = MapCollection(name: mapName.isEmpty ? "Untitled Map" : mapName)
+                modelContext.insert(map)
+                createdMap = map
+            }
+            
+            // Generate places using the selected provider
+            let (places, usedPCC): ([TemplatePlace], Bool)
+            switch selectedProvider {
+            case .appleFM:
+                (places, usedPCC) = try await LLMPlaceGenerator.generatePlaces(userPrompt: trimmed, maxCount: 20)
+            case .gemini:
+                (places, usedPCC) = try await GeminiPlaceGenerator.generatePlaces(userPrompt: trimmed, maxCount: 20)
+            }
+            
+            // Start importer from generated places (converted to ExtractedAddress inside)
+            isImporting = true
+            importer.startFromGenerated(places, usedPCC: usedPCC)
+        } catch {
+            // If generation fails, print error
+            print("AI generation failed: \(error.localizedDescription)")
+            print(error)
         }
     }
 }

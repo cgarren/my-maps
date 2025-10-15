@@ -72,9 +72,32 @@ struct SelectAddressesSheet: View {
                                                 .font(.caption)
                                                 .foregroundStyle(.secondary)
                                         } else {
-                                            Text("Couldn’t resolve location")
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
+                                            HStack(spacing: 8) {
+                                                VStack(alignment: .leading, spacing: 4) {
+                                                    Text("Couldn't resolve location")
+                                                        .font(.caption)
+                                                        .foregroundStyle(.secondary)
+                                                    if item.geocodeStatus == .resolving {
+                                                        HStack(spacing: 4) {
+                                                            ProgressView()
+                                                                .scaleEffect(0.7)
+                                                            Text("Retrying...")
+                                                                .font(.caption2)
+                                                                .foregroundStyle(.secondary)
+                                                        }
+                                                    }
+                                                }
+                                                if item.geocodeStatus != .resolving {
+                                                    Button {
+                                                        importer.retry(candidateId: item.id)
+                                                    } label: {
+                                                        Label("Retry", systemImage: "arrow.clockwise")
+                                                            .font(.caption)
+                                                    }
+                                                    .buttonStyle(.bordered)
+                                                    .controlSize(.mini)
+                                                }
+                                            }
                                             if let logsForItem = importer.debugLogs[item.id], !logsForItem.isEmpty {
                                                 DisclosureGroup("Details") {
                                                     ForEach(logsForItem, id: \.self) { line in
