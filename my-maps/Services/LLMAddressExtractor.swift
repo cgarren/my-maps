@@ -1,6 +1,8 @@
 import Foundation
+#if canImport(FoundationModels)
 import FoundationModels
 
+@available(iOS 26.0, macOS 26.0, *)
 @Generable(description: "A US postal address extracted from text")
 struct LLMExtractedAddress {
     var organizationName: String?
@@ -20,7 +22,7 @@ enum ExtractionError: Error {
     var localizedDescription: String {
         switch self {
         case .unsupportedPlatform:
-            return "Foundation Models requires iOS 18+ or macOS 15+"
+            return "Foundation Models requires iOS 26+ or macOS 26+"
         case .modelUnavailable:
             return "Apple Intelligence is not available on this device"
         case .invalidResponse:
@@ -28,24 +30,36 @@ enum ExtractionError: Error {
         }
     }
 }
+#endif
 
 struct LLMAddressExtractor {
     static var isSupported: Bool {
-        if #available(iOS 18, macOS 15, *) {
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, macOS 26.0, *) {
             // Check if Apple Intelligence is available
             let model = SystemLanguageModel.default
             if case .available = model.availability {
                 return true
             }
         }
+        #endif
         return false
     }
     
     static func extractAddresses(from text: String) async throws -> [ExtractedAddress] {
-        guard #available(iOS 18, macOS 15, *) else {
-            throw ExtractionError.unsupportedPlatform
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, macOS 26.0, *) {
+            return try await extractWithFoundationModels(from: text)
         }
-        
+        #endif
+        // Foundation Models not available - return empty array
+        print(">>> Foundation Models not available on this SDK")
+        return []
+    }
+    
+    #if canImport(FoundationModels)
+    @available(iOS 26.0, macOS 26.0, *)
+    private static func extractWithFoundationModels(from text: String) async throws -> [ExtractedAddress] {
         let model = SystemLanguageModel.default
         guard case .available = model.availability else {
             throw ExtractionError.modelUnavailable
@@ -86,7 +100,10 @@ struct LLMAddressExtractor {
             convertToExtractedAddress(llmAddr)
         }
     }
+    #endif
     
+    #if canImport(FoundationModels)
+    @available(iOS 26.0, macOS 26.0, *)
     private static func convertToExtractedAddress(_ llm: LLMExtractedAddress) -> ExtractedAddress {
         var parts: [String] = []
         parts.append(llm.streetAddress)
@@ -110,5 +127,6 @@ struct LLMAddressExtractor {
             postalCode: llm.postalCode
         )
     }
+    #endif
 }
 

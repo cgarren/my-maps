@@ -72,9 +72,32 @@ struct SelectAddressesSheet: View {
                                                 .font(.caption)
                                                 .foregroundStyle(.secondary)
                                         } else {
-                                            Text("Couldn’t resolve location")
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
+                                            HStack(spacing: 8) {
+                                                VStack(alignment: .leading, spacing: 4) {
+                                                    Text("Couldn't resolve location")
+                                                        .font(.caption)
+                                                        .foregroundStyle(.secondary)
+                                                    if item.geocodeStatus == .resolving {
+                                                        HStack(spacing: 4) {
+                                                            ProgressView()
+                                                                .scaleEffect(0.7)
+                                                            Text("Retrying...")
+                                                                .font(.caption2)
+                                                                .foregroundStyle(.secondary)
+                                                        }
+                                                    }
+                                                }
+                                                if item.geocodeStatus != .resolving {
+                                                    Button {
+                                                        importer.retry(candidateId: item.id)
+                                                    } label: {
+                                                        Label("Retry", systemImage: "arrow.clockwise")
+                                                            .font(.caption)
+                                                    }
+                                                    .buttonStyle(.bordered)
+                                                    .controlSize(.mini)
+                                                }
+                                            }
                                             if let logsForItem = importer.debugLogs[item.id], !logsForItem.isEmpty {
                                                 DisclosureGroup("Details") {
                                                     ForEach(logsForItem, id: \.self) { line in
@@ -95,15 +118,6 @@ struct SelectAddressesSheet: View {
                 VStack(spacing: 8) {
                     // Info about AI extraction
                     VStack(alignment: .leading, spacing: 6) {
-                        if importer.usedLLM {
-                            Text("Addresses extracted using Apple Intelligence LLM")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            Text("Addresses extracted using on-device Natural Language AI")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
                         Text("Review results before adding to your map.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)

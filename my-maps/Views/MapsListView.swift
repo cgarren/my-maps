@@ -8,17 +8,24 @@ struct MapsListView: View {
     @State private var renamingMap: MapCollection? = nil
     @State private var renameText: String = ""
     @State private var mapToDelete: MapCollection? = nil
+    @State private var showSettings = false
 
     var body: some View {
         NavigationStack {
             List {
                 if maps.isEmpty {
                     Section {
-                    Text("No maps found")
+                        Text("No maps found")
                             .foregroundStyle(.secondary)
+                            #if os(macOS)
+                            .padding(.vertical, 8)
+                            #endif
                     }
                     Section {
                         Button("Create a map") { isPresentingNewMap = true }
+                            #if os(macOS)
+                            .buttonStyle(.borderless)
+                            #endif
                     }
                 } else {
                     ForEach(maps) { map in
@@ -49,6 +56,9 @@ struct MapsListView: View {
                                         .frame(width: 80)
                                 }
                             }
+                            #if os(macOS)
+                            .padding(.vertical, 6)
+                            #endif
                         }
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button(role: .destructive) {
@@ -71,6 +81,20 @@ struct MapsListView: View {
             }
             .navigationTitle("My Maps")
             .toolbar {
+                ToolbarItem(placement: .automatic) {
+                    Button {
+                        showSettings = true
+                    } label: {
+                        #if os(macOS)
+                        Label("Settings", systemImage: "gearshape")
+                        #else
+                        Label("AI Settings", systemImage: "gearshape")
+                        #endif
+                    }
+                    #if os(macOS)
+                    .help("Configure AI provider and API keys")
+                    #endif
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Button { isPresentingNewMap = true } label: { Label("New Map", systemImage: "plus") }
                 }
@@ -122,6 +146,9 @@ struct MapsListView: View {
             if let map = mapToDelete {
                 Text("Are you sure you want to delete \"\(map.name)\"? This action cannot be undone.")
             }
+        }
+        .sheet(isPresented: $showSettings) {
+            SettingsView()
         }
     }
 }
