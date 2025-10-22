@@ -39,17 +39,6 @@ struct ImportProgressView: View {
                     }
                 }
 
-                VStack(alignment: .leading, spacing: 6) {
-                    if importer.usedLLM {
-                        Text("Using Apple Intelligence LLM for extraction")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Text("Using on-device Natural Language AI for extraction")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 // Paste fallback moved to the review step
             }

@@ -19,6 +19,15 @@ struct MapDetailView: View {
     @State private var pendingCoordinate: CLLocationCoordinate2D?
     @State private var pendingName: String = ""
     @State private var latestCenter: CLLocationCoordinate2D?
+    
+    // Bulk addition states
+    @State private var showingTemplateSheet = false
+    @State private var showingAISheet = false
+    @State private var selectedTemplate: MapTemplate? = nil
+    @StateObject private var bulkImporter = URLImporter()
+    @State private var showBulkReview = false
+    @State private var isBulkImporting = false
+    
     // Removed mapRevision invalidation; we'll key each item by id+visited instead
     private let geocoder = CLGeocoder()
     private let locationProvider = LocationProvider()
@@ -163,7 +172,80 @@ struct MapDetailView: View {
                 }
             )
         }
-        .onAppear(perform: centerCamera)
+        .sheet(isPresented: $showingTemplateSheet) {
+            BulkTemplateSheet(
+                selectedTemplate: $selectedTemplate,
+                onConfirm: {
+                    guard let template = selectedTemplate else { return }
+                    do {
+                        let places = try TemplateLoader.loadPlaces(from: template)
+                        isBulkImporting = true
+                        bulkImporter.startFromTemplate(places)
+                        showingTemplateSheet = false
+                    } catch {
+                        print("Failed to load template: \(error)")
+                    }
+                },
+                onCancel: {
+                    showingTemplateSheet = false
+                    selectedTemplate = nil
+                }
+            )
+        }
+        .sheet(isPresented: $showingAISheet) {
+            BulkAISheet(
+                onGenerate: { places, usedPCC in
+                    isBulkImporting = true
+                    bulkImporter.startFromGenerated(places, usedPCC: usedPCC)
+                    showingAISheet = false
+                },
+                onCancel: {
+                    showingAISheet = false
+                }
+            )
+        }
+        .sheet(isPresented: $isBulkImporting) {
+            ImportProgressView(importer: bulkImporter, onCancel: {
+                bulkImporter.cancel()
+                isBulkImporting = false
+            }, onPaste: { text in
+                bulkImporter.startFromText(text, allowPCC: true)
+            })
+        }
+        .sheet(isPresented: $showBulkReview) {
+            SelectAddressesSheet(importer: bulkImporter, usedPCC: bulkImporter.usedPCC, onConfirm: { selected in
+                for item in selected {
+                    guard let coord = item.coordinate else { continue }
+                    let trimmedName = item.displayName?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let preferredName = (trimmedName?.isEmpty == false) ? trimmedName : nil
+                    let title = preferredName ?? item.normalizedText.components(separatedBy: "\n").first ?? "New Place"
+                    let place = Place(name: title, latitude: coord.latitude, longitude: coord.longitude, map: map)
+                    modelContext.insert(place)
+                    map.places.append(place)
+                }
+                isBulkImporting = false
+                showBulkReview = false
+            }, onCancel: {
+                isBulkImporting = false
+                showBulkReview = false
+            }, onPaste: { text in
+                showBulkReview = false
+                isBulkImporting = true
+                bulkImporter.startFromText(text, allowPCC: true)
+            })
+        }
+        .onReceive(bulkImporter.$stage) { stage in
+            switch stage {
+            case .reviewing:
+                isBulkImporting = false
+                showBulkReview = true
+            default:
+                break
+            }
+        }
+        .onAppear {
+            centerCamera()
+        }
         .overlay(alignment: .center) {
             if isSelectingAtCenter {
                 Image(systemName: "plus.viewfinder")
@@ -308,21 +390,343 @@ struct MapDetailView: View {
     @ToolbarContentBuilder private var addToolbar: some ToolbarContent {
         ToolbarItem(placement: .primaryAction) {
             Menu {
-                Button("Add at Map Center", systemImage: "plus.viewfinder") {
+                // Individual place additions
+                Button {
                     isSelectingAtCenter = true
+                } label: {
+                    Label("Add Place at Center", systemImage: "plus.viewfinder")
                 }
-                Button("Add Current Location", systemImage: "location.fill") {
+                
+                Button {
                     locationProvider.requestOneShot { location in
                         guard let loc = location else { return }
                         prepareNameAndConfirm(for: loc.coordinate)
                     }
+                } label: {
+                    Label("Add Current Location", systemImage: "location.fill")
                 }
-                Button("Search Places", systemImage: "magnifyingglass") {
+                
+                Button {
                     showingSearchSheet = true
+                } label: {
+                    Label("Search and Add Place", systemImage: "magnifyingglass")
+                }
+                
+                Divider()
+                
+                // Bulk additions
+                Button {
+                    showingTemplateSheet = true
+                } label: {
+                    Label("Add Places from Template", systemImage: "doc.on.doc")
+                }
+                
+                Button {
+                    showingAISheet = true
+                } label: {
+                    Label("Generate Places with AI", systemImage: "sparkles")
                 }
             } label: {
                 Label("Add", systemImage: "plus")
             }
+        }
+    }
+}
+
+// MARK: - Bulk Addition Sheets
+
+struct BulkTemplateSheet: View {
+    @Binding var selectedTemplate: MapTemplate?
+    var onConfirm: () -> Void
+    var onCancel: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var availableTemplates: [MapTemplate] = []
+    
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    if availableTemplates.isEmpty {
+                        Text("No templates available")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Picker("Select Template", selection: $selectedTemplate) {
+                            Text("Choose a template...").tag(nil as MapTemplate?)
+                            ForEach(availableTemplates) { template in
+                                Text(template.displayName).tag(template as MapTemplate?)
+                            }
+                        }
+                        #if os(macOS)
+                        .pickerStyle(.menu)
+                        #endif
+                    }
+                } header: {
+                    Text("Choose a Template")
+                        .font(.headline)
+                } footer: {
+                    Text("All places from the selected template will be added to your map. You'll be able to review them before confirming.")
+                        .font(.caption)
+                }
+            }
+            .navigationTitle("Add from Template")
+            #if os(macOS)
+            .formStyle(.grouped)
+            .padding(20)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        onCancel()
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Add") {
+                        onConfirm()
+                        dismiss()
+                    }
+                    .disabled(selectedTemplate == nil)
+                    #if os(macOS)
+                    .buttonStyle(.borderedProminent)
+                    #endif
+                }
+            }
+        }
+        #if os(macOS)
+        .frame(minWidth: 500, idealWidth: 550, minHeight: 300, idealHeight: 400)
+        #else
+        .frame(minWidth: 360, minHeight: 200)
+        #endif
+        .onAppear {
+            availableTemplates = TemplateLoader.availableTemplates()
+        }
+    }
+}
+
+struct BulkAISheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var aiQuery: String = ""
+    @State private var isGenerating: Bool = false
+    @State private var showSettings: Bool = false
+    @State private var generationProgress: String = ""
+    @State private var verifiedCount: Int = 0
+    @State private var showErrorAlert: Bool = false
+    @State private var errorMessage: String = ""
+    @AppStorage("selected_ai_provider") private var selectedProviderRaw: String = AIProvider.appleFM.rawValue
+    @FocusState private var isQueryFocused: Bool
+    
+    var onGenerate: ([TemplatePlace], Bool) -> Void
+    var onCancel: () -> Void
+    
+    private var selectedProvider: AIProvider {
+        AIProvider(rawValue: selectedProviderRaw) ?? .appleFM
+    }
+    
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    VStack(alignment: .leading, spacing: 12) {
+                        TextField("e.g. Top coffee shops in Austin", text: $aiQuery)
+                            #if os(iOS)
+                            .textInputAutocapitalization(.sentences)
+                            .disableAutocorrection(false)
+                            #elseif os(macOS)
+                            .textFieldStyle(.roundedBorder)
+                            #endif
+                            .focused($isQueryFocused)
+                            .disabled(!selectedProvider.isAvailable || isGenerating)
+                            .onSubmit {
+                                if canGenerate {
+                                    Task { await generate() }
+                                }
+                            }
+                        
+                        // Show progress when generating
+                        if isGenerating {
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    ProgressView()
+                                        .scaleEffect(0.8)
+                                    Text(generationProgress)
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                }
+                                
+                                if verifiedCount > 0 {
+                                    Text("Verified \(verifiedCount) places so far")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .padding(.vertical, 4)
+                        }
+                    }
+                } header: {
+                    Text("What places do you want?")
+                        .font(.headline)
+                } footer: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        if !selectedProvider.isAvailable {
+                            if selectedProvider == .appleFM {
+                                Text("AI generation requires iOS 26+ or macOS 26+ with Apple Intelligence.")
+                            } else {
+                                #if os(macOS)
+                                Text("Requires API key configuration. Click the settings button to add your \(selectedProvider.displayName) API key.")
+                                #else
+                                Text("Requires API key configuration. Tap the settings button to add your \(selectedProvider.displayName) API key.")
+                                #endif
+                            }
+                        } else if isGenerating {
+                            Text("Generating and verifying places... This may take 20-30 seconds.")
+                        } else {
+                            Text("Describe the places you want (e.g., \"coffee shops in Austin\" or \"national parks in California\"). AI will generate suggestions that you can review before adding.")
+                        }
+                    }
+                    .font(.caption)
+                }
+            }
+            .navigationTitle("Generate with AI")
+            #if os(macOS)
+            .formStyle(.grouped)
+            .padding(20)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        onCancel()
+                        dismiss()
+                    }
+                    .disabled(isGenerating)
+                }
+                
+                #if os(iOS)
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        showSettings = true
+                    } label: {
+                        Label("AI Settings", systemImage: "gearshape")
+                    }
+                }
+                #elseif os(macOS)
+                ToolbarItem(placement: .automatic) {
+                    Button {
+                        showSettings = true
+                    } label: {
+                        Label("Settings", systemImage: "gearshape")
+                    }
+                    .help("Configure AI provider and API keys")
+                }
+                #endif
+                
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        Task { await generate() }
+                    } label: {
+                        if isGenerating {
+                            ProgressView()
+                        } else {
+                            Text("Generate")
+                        }
+                    }
+                    .disabled(!canGenerate)
+                    #if os(macOS)
+                    .buttonStyle(.borderedProminent)
+                    #endif
+                }
+            }
+        }
+        #if os(macOS)
+        .frame(minWidth: 500, idealWidth: 550, minHeight: 350, idealHeight: 450)
+        #else
+        .frame(minWidth: 360, minHeight: 200)
+        #endif
+        .task { isQueryFocused = true }
+        .sheet(isPresented: $showSettings) {
+            SettingsView()
+        }
+        .alert("Generation Error", isPresented: $showErrorAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(errorMessage)
+        }
+    }
+    
+    private var canGenerate: Bool {
+        let hasQuery = !aiQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return selectedProvider.isAvailable && hasQuery && !isGenerating
+    }
+    
+    @MainActor private func generate() async {
+        guard !isGenerating else { return }
+        isGenerating = true
+        generationProgress = "Preparing..."
+        verifiedCount = 0
+        
+        defer {
+            isGenerating = false
+            generationProgress = ""
+            verifiedCount = 0
+        }
+        
+        do {
+            let trimmed = aiQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return }
+            
+            // Generate places using the selected provider
+            let (places, usedPCC): ([TemplatePlace], Bool)
+            switch selectedProvider {
+            case .appleFM:
+                (places, usedPCC) = try await LLMPlaceGenerator.generatePlaces(userPrompt: trimmed, maxCount: 20)
+            case .gemini:
+                (places, usedPCC) = try await GeminiPlaceGenerator.generatePlaces(
+                    userPrompt: trimmed,
+                    maxCount: 20,
+                    progressHandler: { progress in
+                        // Update UI with progress
+                        generationProgress = progress.currentActivity
+                        verifiedCount = progress.verifiedPlacesCount
+                    }
+                )
+            }
+            
+            // Call the completion handler with generated places
+            onGenerate(places, usedPCC)
+            dismiss()
+            
+        } catch let error as GeminiPlaceGenerator.GeminiError {
+            // Handle Gemini-specific errors with user-friendly messages
+            print("AI generation failed: \(error.localizedDescription)")
+            
+            switch error {
+            case .rateLimited(let retryAfter):
+                if let delay = retryAfter {
+                    errorMessage = "Rate limited. Please wait \(Int(delay)) seconds before trying again."
+                } else {
+                    errorMessage = "Too many requests. Please wait a moment and try again."
+                }
+            case .quotaExceeded(let retryAfter):
+                if let delay = retryAfter {
+                    errorMessage = "API quota exceeded. Please retry in \(Int(delay)) seconds, or check your API plan at ai.google.dev."
+                } else {
+                    errorMessage = "API quota exceeded. Please check your plan and billing at ai.google.dev, or try again later."
+                }
+            case .noAPIKey:
+                errorMessage = "No API key configured. Please add your Gemini API key in settings."
+            case .networkError:
+                errorMessage = "Network error. Please check your internet connection and try again."
+            default:
+                errorMessage = error.localizedDescription
+            }
+            
+            showErrorAlert = true
+            
+        } catch {
+            // Generic error handling
+            print("AI generation failed: \(error.localizedDescription)")
+            print(error)
+            errorMessage = "Generation failed: \(error.localizedDescription)"
+            showErrorAlert = true
         }
     }
 }

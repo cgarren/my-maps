@@ -58,10 +58,11 @@ Secure storage helper for API keys using iOS Keychain.
 REST API client for Google Gemini API.
 
 **Key Features:**
-- Uses Gemini 2.0 Flash model
+- Uses Gemini 2.5 Flash model (latest)
 - Structured JSON output via `response_schema`
 - Separated system instructions from user prompts
 - **Few-shot prompting** with example output for better accuracy
+- ~~**Tool calling**: Can search for locations to verify addresses (optional)~~ (Disabled: Gemini doesn't support tools + structured JSON together)
 - Comprehensive error handling with detailed logging
 - Extended timeout (60s) for complex requests
 - Converts Gemini response to `TemplatePlace` objects
@@ -256,6 +257,91 @@ The implementation handles various error cases:
 | **Speed**        | Fast (local)                  | Depends on network     |
 | **Offline**      | Works offline                 | Requires internet      |
 | **Quality**      | Excellent                     | Excellent              |
+| **Tool Calling** | ✅ Optional                    | ✅ Mandatory (verified) |
+
+## Tool Calling Feature ✅
+
+**Both providers now use tool calling to verify addresses!**
+
+### Apple Foundation Models ✅
+
+**Status:** Fully implemented with optional usage
+
+Apple Foundation Models support native tool calling via the `Tool` protocol. The on-device model calls `search_location` when it wants to verify addresses.
+
+**Implementation:**
+- `LocationSearchToolFM` - Conforms to `Tool` protocol
+- Uses `@Generable` for type-safe arguments
+- Automatically integrated into `LanguageModelSession`
+- Model decides when verification is needed (optional)
+
+**Benefits:**
+- ✅ Real, verified addresses from Apple Maps when needed
+- ✅ Optional usage - only calls tool when uncertain
+- ✅ 100% on-device and private
+- ✅ Type-safe implementation
+
+### Google Gemini ✅ **MANDATORY VERIFICATION**
+
+**Status:** Fully implemented with **required** verification for every place!
+
+**The Solution:** We chose tool calling over structured JSON output because verified addresses are more important than strict schema enforcement.
+
+**Implementation:**
+- Tool calling enabled with `search_location` function
+- Multi-turn conversation loop (up to 20 turns)
+- System instructions **require** tool usage for every place
+- JSON parsing from text response (flexible extraction)
+
+**How It Works:**
+1. User requests places (e.g., "coffee shops in Austin")
+2. Gemini identifies candidate places
+3. **For EACH place**, calls `search_location("Place Name City")`
+4. MKLocalSearch verifies place exists, returns real address
+5. Gemini uses verified data in response
+6. Only verified, real places returned
+
+**Benefits:**
+- ✅ **NO MORE HALLUCINATIONS** - all places verified via Apple Maps
+- ✅ **Real addresses** - every address confirmed to exist
+- ✅ **Better UX** - users get places they can visit
+- ✅ **Accurate geocoding** - verified addresses work
+
+**Trade-offs:**
+- ⚠️ Slower (more API calls)
+- ⚠️ More API usage (multi-turn)
+- ✅ **Worth it** - accuracy > speed
+
+**See `TOOL_CALLING.md` for complete documentation.**
+
+## Rate Limiting & Progress Tracking ✅
+
+**Comprehensive rate limit handling with real-time progress:**
+
+### Features
+- ✅ **Intelligent error detection** - Parses retry delays from API errors
+- ✅ **User-friendly messages** - "Wait 25 seconds" instead of technical errors
+- ✅ **Real-time progress** - "Verifying Blue Bottle Coffee..."
+- ✅ **Verified count** - "Verified 5 places so far"
+- ✅ **Input disabled** - Can't interrupt generation
+- ✅ **Error classification** - Rate limit vs quota exceeded
+
+### Error Handling
+```swift
+case .rateLimited(retryAfter: TimeInterval?)
+    -> "Rate limited. Please wait 25 seconds..."
+
+case .quotaExceeded(retryAfter: TimeInterval?)
+    -> "Quota exceeded. Please retry in 25 seconds or check your plan..."
+```
+
+### Progress Updates
+- "Starting generation..."
+- "Verifying [Place Name]..."
+- "Verified N places so far"
+- "Completed! Found 10 places"
+
+**See `RATE_LIMIT_HANDLING.md` for complete details.**
 
 ## Best Practices
 

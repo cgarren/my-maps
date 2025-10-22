@@ -32,7 +32,7 @@ struct AIAddressExtractor {
         var found: [ExtractedAddress] = []
         var usedLLM = false
         
-        // 0) Try Foundation Models LLM extraction (iOS 18+)
+        // 0) Try Foundation Models LLM extraction (iOS 26+)
         if LLMAddressExtractor.isSupported {
             print(">>> Trying Foundation Models for address extraction")
             if let llmResults = try? await LLMAddressExtractor.extractAddresses(from: text) {

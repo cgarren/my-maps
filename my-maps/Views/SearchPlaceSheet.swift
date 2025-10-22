@@ -13,53 +13,117 @@ struct SearchPlaceSheet: View {
 
     var body: some View {
         NavigationStack {
-//            VStack() {
-            Form {
-                Section{
+            VStack(spacing: 0) {
+                // Search field
+                HStack {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.secondary)
                     TextField("Search places", text: $query)
-                    // iOS-only modifier; guard for macOS builds
-#if os(iOS)
+                        #if os(iOS)
                         .textInputAutocapitalization(.words)
-#endif
-                    // .textFieldStyle(.roundedBorder)
+                        #elseif os(macOS)
+                        .textFieldStyle(.roundedBorder)
+                        #endif
                         .onChange(of: query) { _, _ in debounceSearch() }
                         .onSubmit { performSearch() }
                         .focused($isSearchFocused)
-                    //                        .padding()
-                    //                     Button("Search") { performSearch() }
-                    //                         .disabled(query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    //                }
-                    //                .padding()
-                }.padding()
+                }
+                .padding()
+                #if os(macOS)
+                .background(Color(NSColor.controlBackgroundColor))
+                #endif
                 
-                Section() {
-                    if isSearching {
-                        ProgressView().padding()
-                    } else {
-                        List(results, id: \.self) { item in
-                            Button {
-                                onPick(item)
-                                dismiss()
-                            } label: {
-                                VStack(alignment: .leading, spacing: 2) {
+                Divider()
+                
+                // Results list
+                if isSearching {
+                    VStack {
+                        ProgressView()
+                            .padding()
+                        Text("Searching...")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if results.isEmpty && !query.isEmpty {
+                    VStack(spacing: 12) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.largeTitle)
+                            .foregroundStyle(.secondary)
+                        Text("No results found")
+                            .font(.headline)
+                        Text("Try a different search term")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if results.isEmpty {
+                    VStack(spacing: 12) {
+                        Image(systemName: "location.magnifyingglass")
+                            .font(.largeTitle)
+                            .foregroundStyle(.secondary)
+                        Text("Search for a place")
+                            .font(.headline)
+                        Text("Enter a location, address, or place name")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    List(results, id: \.self) { item in
+                        Button {
+                            onPick(item)
+                            dismiss()
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "mappin.circle.fill")
+                                    .font(.title2)
+                                    .foregroundStyle(.red)
+                                
+                                VStack(alignment: .leading, spacing: 4) {
                                     Text(item.name ?? "Unknown")
                                         .font(.headline)
+                                        .foregroundStyle(.primary)
+                                    
                                     let pm = item.placemark
                                     let street = [pm.subThoroughfare, pm.thoroughfare].compactMap { $0 }.joined(separator: " ")
                                     let parts = [street.isEmpty ? nil : street, pm.locality, pm.administrativeArea]
                                     if let subtitle = parts.compactMap({ $0 }).joined(separator: ", ").nilIfEmpty() {
-                                        Text(subtitle).font(.subheadline).foregroundStyle(.secondary)
+                                        Text(subtitle)
+                                            .font(.subheadline)
+                                            .foregroundStyle(.secondary)
                                     }
                                 }
+                                
+                                Spacer()
+                                
+                                Image(systemName: "chevron.right")
+                                    .font(.caption)
+                                    .foregroundStyle(.tertiary)
                             }
+                            #if os(macOS)
+                            .padding(.vertical, 6)
+                            #endif
                         }
+                        .buttonStyle(.plain)
                     }
+                    #if os(macOS)
+                    .listStyle(.inset)
+                    #endif
                 }
-            }.navigationTitle("Search")
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
-//            .padding()
+            }
+            .navigationTitle("Search")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
         }
+        #if os(macOS)
+        .frame(minWidth: 500, idealWidth: 600, minHeight: 400, idealHeight: 500)
+        #else
         .frame(minWidth: 320, minHeight: 150)
+        #endif
         .task { isSearchFocused = true }
     }
 
@@ -87,5 +151,8 @@ struct SearchPlaceSheet: View {
 private extension String {
     func nilIfEmpty() -> String? { isEmpty ? nil : self }
 }
+
+
+
 
 

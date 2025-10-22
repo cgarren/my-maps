@@ -15,11 +15,17 @@ struct MapsListView: View {
             List {
                 if maps.isEmpty {
                     Section {
-                    Text("No maps found")
+                        Text("No maps found")
                             .foregroundStyle(.secondary)
+                            #if os(macOS)
+                            .padding(.vertical, 8)
+                            #endif
                     }
                     Section {
                         Button("Create a map") { isPresentingNewMap = true }
+                            #if os(macOS)
+                            .buttonStyle(.borderless)
+                            #endif
                     }
                 } else {
                     ForEach(maps) { map in
@@ -50,6 +56,9 @@ struct MapsListView: View {
                                         .frame(width: 80)
                                 }
                             }
+                            #if os(macOS)
+                            .padding(.vertical, 6)
+                            #endif
                         }
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button(role: .destructive) {
@@ -76,8 +85,15 @@ struct MapsListView: View {
                     Button {
                         showSettings = true
                     } label: {
+                        #if os(macOS)
+                        Label("Settings", systemImage: "gearshape")
+                        #else
                         Label("AI Settings", systemImage: "gearshape")
+                        #endif
                     }
+                    #if os(macOS)
+                    .help("Configure AI provider and API keys")
+                    #endif
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Button { isPresentingNewMap = true } label: { Label("New Map", systemImage: "plus") }

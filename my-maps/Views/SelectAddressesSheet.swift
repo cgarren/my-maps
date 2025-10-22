@@ -118,15 +118,6 @@ struct SelectAddressesSheet: View {
                 VStack(spacing: 8) {
                     // Info about AI extraction
                     VStack(alignment: .leading, spacing: 6) {
-                        if importer.usedLLM {
-                            Text("Addresses extracted using Apple Intelligence LLM")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            Text("Addresses extracted using on-device Natural Language AI")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
                         Text("Review results before adding to your map.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
