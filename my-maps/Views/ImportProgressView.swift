@@ -10,35 +10,36 @@ struct ImportProgressView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 16) {
-                switch importer.stage {
-                case .idle:
-                    Text("Idle")
-                case .fetching:
-                    progressRow(title: "Fetching page…")
-                case .extracting(let usePCC):
-                    progressRow(title: usePCC ? "Extracting addresses (PCC)…" : "Extracting addresses…")
-                case .geocoding(let done, let total):
-                    VStack(spacing: 8) {
-                        progressRow(title: "Geocoding addresses…")
-                        ProgressView(value: total == 0 ? 0 : Double(done) / Double(total))
-                        Text("\(done) of \(total)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                case .reviewing:
-                    Text("Preparing review…")
-                case .completed:
-                    Text("Completed")
-                case .failed(let message):
-                    VStack(spacing: 8) {
-                        Text("Import failed")
-                            .font(.headline)
-                        Text(message)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                Group {
+                    switch importer.stage {
+                    case .idle:
+                        Text("Idle")
+                    case .fetching:
+                        progressRow(title: "Fetching page…")
+                    case .extracting(let usePCC):
+                        progressRow(title: usePCC ? "Extracting addresses (PCC)…" : "Extracting addresses…")
+                    case .geocoding(let done, let total):
+                        VStack(spacing: 8) {
+                            progressRow(title: "Geocoding addresses…")
+                            ProgressView(value: total == 0 ? 0 : Double(done) / Double(total))
+                            Text("\(done) of \(total)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    case .reviewing:
+                        Text("Preparing review…")
+                    case .completed:
+                        Text("Completed")
+                    case .failed(let message):
+                        VStack(spacing: 8) {
+                            Text("Import failed")
+                                .font(.headline)
+                            Text(message)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
-
                 .frame(maxWidth: .infinity, alignment: .leading)
                 // Paste fallback moved to the review step
             }
