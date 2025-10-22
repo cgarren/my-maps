@@ -156,10 +156,12 @@ struct MapDetailView: View {
             NavigationStack {
                 PlacesListView(map: map)
             }
+            #if os(iOS)
             .presentationDetents([.medium, .large])
-#if os(iOS)
             .presentationBackground(.ultraThinMaterial)
-#endif
+            #else
+            .frame(minWidth: 400, idealWidth: 500, minHeight: 400, idealHeight: 600)
+            #endif
         }
         .sheet(item: $pickContext) { ctx in
             PickNearbyPlacesSheet(

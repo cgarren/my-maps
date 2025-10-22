@@ -49,18 +49,33 @@ struct PlacesListView: View {
                 deletePlaces(toDelete)
             }
         }
+        #if os(iOS)
         .listStyle(.insetGrouped)
+        #else
+        .listStyle(.inset)
+        #endif
         .navigationTitle("Places")
+        #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
+        #endif
         .toolbar {
+            #if os(iOS)
             ToolbarItem(placement: .topBarLeading) { EditButton() }
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Done") { dismiss() }
             }
+            #else
+            ToolbarItem(placement: .automatic) {
+                Button("Done") { dismiss() }
+            }
+            #endif
         }
         .navigationDestination(for: Place.self) { place in
             PlaceDetailView(place: place)
         }
+        #if os(macOS)
+        .frame(minWidth: 400, minHeight: 400)
+        #endif
     }
 
     private func deletePlaces(_ places: [Place]) {
