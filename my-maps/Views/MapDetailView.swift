@@ -2,6 +2,9 @@ import SwiftUI
 import MapKit
 import SwiftData
 import CoreLocation
+#if os(iOS)
+import UIKit
+#endif
 
 struct MapDetailView: View {
     @Environment(\.modelContext) private var modelContext
@@ -28,6 +31,7 @@ struct MapDetailView: View {
     @StateObject private var bulkImporter = URLImporter()
     @State private var showBulkReview = false
     @State private var isBulkImporting = false
+    @AppStorage("has_seen_places_hint") private var hasSeenPlacesHint: Bool = false
     
     // Removed mapRevision invalidation; we'll key each item by id+visited instead
     private let geocoder = CLGeocoder()
@@ -285,6 +289,10 @@ struct MapDetailView: View {
                 // Completion HUD (tap to open Places list)
                 Button {
                     showingPlacesList = true
+                    hasSeenPlacesHint = true
+                    #if os(iOS)
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    #endif
                 } label: {
                     GlassPanel {
                         HStack(spacing: 12) {
@@ -294,8 +302,14 @@ struct MapDetailView: View {
                                     .foregroundStyle(.secondary)
                                 Text("\(map.visitedCount) of \(map.totalCount) visited")
                                     .font(.subheadline)
+                                if !hasSeenPlacesHint {
+                                    Text("Tap to view")
+                                        .font(.caption2)
+                                        .foregroundStyle(.tertiary)
+                                        .transition(.opacity)
+                                }
                             }
-                            // No spacer—keeps the panel compact
+                            // Keep compact: progress ring + disclosure affordance
                             let fraction = max(0, min(1, map.completionFraction))
                             ZStack {
                                 Circle()
@@ -309,13 +323,23 @@ struct MapDetailView: View {
                                     .monospacedDigit()
                             }
                             .frame(width: 36, height: 36)
+                            Image(systemName: "chevron.up")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .imageScale(.small)
                         }
                         .fixedSize()
                     }
+                    .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 }
                 .buttonStyle(.plain)
+                #if os(iOS)
+                .hoverEffect(.highlight)
+                #endif
                 .accessibilityLabel("Show places list")
+                .accessibilityHint("Opens the list of places in this map")
                 .padding(.bottom, 8)
+                .animation(.easeInOut(duration: 0.25), value: hasSeenPlacesHint)
             }
         }
     }
